@@ -9,7 +9,7 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from core.models import Recipe
+from core.models import Recipe, Tag
 
 from recipe.serializers import (
     RecipeSerializer,
@@ -208,3 +208,98 @@ class PrivateRecipeApiTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         self.assertTrue(Recipe.objects.filter(id=recipe.id).exists())
+
+    def test_create_recipe_with_tags(self):
+        """Test creating a recipe with tags"""
+        payload = {
+            'title': 'Avocado lime cheesecake',
+            'tags': [{'name': 'vegan'}, {'name': 'dessert'}],
+            'time_minutes': 60,
+            'price': Decimal('20.00'),
+        }
+        response = self.client.post(RECIPES_URL, payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        recipes = Recipe.objects.filter(user=self.user)
+        self.assertEqual(recipes.count(), 1)
+        recipe = recipes[0]
+        self.assertEqual(recipe.tags.count(), 2)
+        for tag in payload['tags']:
+            exists = recipe.tags.filter(
+                name=tag['name'],
+                user=self.user
+            ).exists()
+            self.assertTrue(exists)
+
+    def test_create_recipe_with_existing_tag(self):
+        """Test creating a recipe with existing tag"""
+        tag = Tag.objects.create(user=self.user, name='vegan')
+        payload = {
+            'title': 'Avocado lime cheesecake',
+            'tags': [{'name': tag.name}, {'name': 'dessert'}],
+            'time_minutes': 60,
+            'price': Decimal('20.00'),
+        }
+        response = self.client.post(RECIPES_URL, payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        recipes = Recipe.objects.filter(user=self.user)
+        self.assertEqual(recipes.count(), 1)
+        recipe = recipes[0]
+        self.assertEqual(recipe.tags.count(), 2)
+        self.assertIn(tag, recipe.tags.all())
+        for tag in payload['tags']:
+            exists = recipe.tags.filter(
+                name=tag['name'],
+                user=self.user
+            ).exists()
+            self.assertTrue(exists)
+
+    def test_create_tag_on_update(self):
+        """Test creating a tag on update"""
+        recipe = create_recipe(user=self.user)
+        payload = {
+            'title': 'Avocado lime cheesecake',
+            'tags': [{'name': 'dessert'}],
+            'time_minutes': 60,
+            'price': Decimal('20.00'),
+        }
+
+        url = detail_url(recipe.id)
+        response = self.client.patch(url, payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        new_tag = Tag.objects.get(user=self.user, name='dessert')
+        self.assertIn(new_tag, recipe.tags.all())
+
+    def test_update_recipe_assign_tag(self):
+        """Test updating a recipe and assigning a tag"""
+        recipe = create_recipe(user=self.user)
+        tag = Tag.objects.create(user=self.user, name='dessert')
+        recipe.tags.add(tag)
+
+        tag_lunch = Tag.objects.create(user=self.user, name='lunch')
+        payload = {
+            'tags': [{'name': 'lunch'}],
+        }
+        url = detail_url(recipe.id)
+        response = self.client.patch(url, payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn(tag_lunch, recipe.tags.all())
+        self.assertNotIn(tag, recipe.tags.all())
+
+    def test_clear_recipe_tag(self):
+        """Test clearing a recipe tag"""
+        recipe = create_recipe(user=self.user)
+        tag = Tag.objects.create(user=self.user, name='dessert')
+        recipe.tags.add(tag)
+
+        payload = {
+            'tags': [],
+        }
+        url = detail_url(recipe.id)
+        response = self.client.patch(url, payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(recipe.tags.count(), 0)
