@@ -1,5 +1,3 @@
-Here's an updated version of the `README.md` file for running tests on the `django-recipe-app-api` project using Docker Compose:
-
 ## Django Recipe App API
 
 This is a sample Django project for managing recipes with REST API endpoints. It is built using Django, Django REST framework, and Docker.
